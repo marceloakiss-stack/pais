@@ -73,7 +73,7 @@ const CATEGORIES = [
 async function geocode(query) {
     let results;
     try {
-        results = await request(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
+        results = await request(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&accept-language=es&q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
     } catch (error) {
         if (error.message.includes('429')) throw new Error('El mapa está limitando consultas. Espera unos segundos y vuelve a intentarlo.');
         throw new Error('No se pudo consultar el mapa. Comprueba tu conexión.');
@@ -140,6 +140,61 @@ async function nearbyAll(latitude, longitude, radius = 12000) {
         }
     } catch { /* se muestran los buckets vacíos con su propio mensaje */ }
     return buckets;
+}
+
+/* ---------- gobierno (dato público verificable vía Wikidata) ---------- */
+
+async function governmentInfo(countryCode) {
+    if (!countryCode) return null;
+    const query = `SELECT (GROUP_CONCAT(DISTINCT ?govLabel; separator=", ") AS ?governmentForms) (SAMPLE(?article) AS ?wikiArticle) WHERE {
+      ?country wdt:P297 "${countryCode.toUpperCase()}".
+      OPTIONAL { ?country wdt:P122 ?gov. }
+      OPTIONAL { ?article schema:about ?country; schema:isPartOf <https://es.wikipedia.org/>. }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
+    } GROUP BY ?country`;
+    try {
+        const data = await request(`https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(query)}`, { headers: { Accept: 'application/sparql-results+json' } }, 10000);
+        const row = data.results?.bindings?.[0];
+        const forms = row?.governmentForms?.value || null;
+        const wikiUrl = row?.wikiArticle?.value || null;
+        if (!forms && !wikiUrl) return null;
+        return { forms, wikiUrl };
+    } catch { return null; }
+}
+
+/* ---------- distancia real a la costa (OpenStreetMap, sin inventar cifras) ---------- */
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const toRad = (value) => (value * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+async function coastDistance(latitude, longitude) {
+    const searchRadii = [60000, 180000, 450000];
+    for (const radius of searchRadii) {
+        try {
+            const query = `[out:json][timeout:20];way(around:${radius},${latitude},${longitude})[natural=coastline];out geom 25;`;
+            const data = await request(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`, {}, 20000);
+            if (!data.elements?.length) continue;
+            let min = Infinity;
+            for (const way of data.elements) {
+                for (const node of way.geometry || []) {
+                    const distance = haversineKm(latitude, longitude, node.lat, node.lon);
+                    if (distance < min) min = distance;
+                }
+            }
+            if (Number.isFinite(min)) return { km: min, wideSearch: radius > searchRadii[0] };
+        } catch { /* probar el siguiente radio de búsqueda */ }
+    }
+    return null;
+}
+
+function numbeoUrl(place) {
+    return `https://www.numbeo.com/crime/in/${encodeURIComponent(place.trim().replace(/\s+/g, '-'))}`;
 }
 
 /* ---------- historial local (opt-in) ---------- */
@@ -215,9 +270,9 @@ function shellReport(location) {
     <div class="report-head"><div><p class="eyebrow">Informe temporal</p><h2>${escapeHtml(displayName)}</h2><p class="report-meta">Coordenadas ${Number(location.lat).toFixed(4)}, ${Number(location.lon).toFixed(4)} · actualizado ${new Date().toLocaleDateString('es-ES')}</p></div><button class="export-button" id="export-button">Imprimir / PDF</button></div>
     <div class="data-grid" id="data-grid">${skeletonStat()}${skeletonStat()}${skeletonStat()}${skeletonStat()}${skeletonStat()}${skeletonStat()}</div>
     <section class="report-section"><h3>Servicios cercanos <span>OPENSTREETMAP</span></h3><div class="places" id="places-grid">${CATEGORIES.filter((c) => !c.mergeInto).map(() => placeList(null)).join('')}</div></section>
-    <section class="report-section"><h3>Investigación pendiente</h3><div class="places"><div class="place-card"><b>Gobierno y política</b><p>Requiere una fuente oficial o editorial verificable para este lugar.</p></div><div class="place-card"><b>Costa y agua</b><p>La distancia al mar y zonas de baño deben validarse con mapas y autoridades locales.</p></div><div class="place-card"><b>Seguridad</b><p>Los índices de criminalidad requieren fuentes gubernamentales actualizadas.</p></div></div></section>
-    <section class="report-section"><h3>Fuentes</h3><div class="sources"><a href="${sourceMap}" target="_blank" rel="noreferrer">Mapa y lugares cercanos</a><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a><a href="https://restcountries.com/" target="_blank" rel="noreferrer">REST Countries</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Datos cartográficos</a></div></section>
-    <p class="disclaimer">Este informe se genera en el dispositivo${historyEnabled() ? '; solo el nombre de la localidad se guarda en tu historial local' : ' y no se guarda'}. Comprueba datos sensibles, teléfonos y horarios en las fuentes oficiales antes de tomar decisiones.</p>`;
+    <section class="report-section"><h3>Gobierno, costa y seguridad</h3><div class="places" id="context-grid">${placeList(null)}${placeList(null)}${placeList(null)}</div></section>
+    <section class="report-section"><h3>Fuentes</h3><div class="sources" id="sources-list"><a href="${sourceMap}" target="_blank" rel="noreferrer">Mapa y lugares cercanos</a><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a><a href="https://restcountries.com/" target="_blank" rel="noreferrer">REST Countries</a><a href="https://www.wikidata.org/" target="_blank" rel="noreferrer">Wikidata</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Datos cartográficos</a></div></section>
+    <p class="disclaimer">Este informe se genera en el dispositivo${historyEnabled() ? '; solo el nombre de la localidad se guarda en tu historial local' : ' y no se guarda'}. La seguridad enlaza a Numbeo (datos de comunidad, no oficiales) y el gobierno a Wikidata; contrasta siempre con fuentes oficiales antes de tomar decisiones.</p>`;
     report.classList.remove('hidden'); emptyState.classList.add('hidden');
     document.querySelector('#export-button').addEventListener('click', () => window.print());
 }
@@ -241,6 +296,21 @@ function fillPlaces(buckets) {
     grid.innerHTML = visible.map(({ id, label }) => placeList(buckets[id], label, id)).join('');
 }
 
+function fillContext({ government, coast, place }) {
+    const grid = document.querySelector('#context-grid');
+    if (!grid) return;
+    const governmentCard = `<article class="place-card"><b>Gobierno</b><p>${government?.forms ? escapeHtml(government.forms) : 'No disponible en Wikidata para este país.'}</p>${government?.wikiUrl ? `<p><a href="${government.wikiUrl}" target="_blank" rel="noreferrer">Ver en Wikipedia →</a></p>` : ''}</article>`;
+    const coastCard = coast
+        ? `<article class="place-card"><b>Costa más cercana</b><p>Aprox. ${coast.km < 1 ? `${Math.round(coast.km * 1000)} m` : `${number(coast.km, coast.km < 20 ? 1 : 0)} km`} en línea recta${coast.wideSearch ? ' (búsqueda ampliada)' : ''}.</p></article>`
+        : `<article class="place-card empty"><b>Costa más cercana</b><p>No se encontró costa en un radio de 450 km.</p></article>`;
+    const securityCard = `<article class="place-card"><b>Seguridad</b><p>No existe una fuente abierta fiable con cifras por localidad; consulta el índice de percepción de Numbeo.</p><p><a href="${numbeoUrl(place)}" target="_blank" rel="noreferrer">Ver en Numbeo →</a></p></article>`;
+    grid.innerHTML = governmentCard + coastCard + securityCard;
+    const sources = document.querySelector('#sources-list');
+    if (sources && !sources.querySelector('[data-numbeo]')) {
+        sources.insertAdjacentHTML('beforeend', `<a data-numbeo href="${numbeoUrl(place)}" target="_blank" rel="noreferrer">Numbeo</a>`);
+    }
+}
+
 /* ---------- flujo principal ---------- */
 
 form.addEventListener('submit', async (event) => {
@@ -255,16 +325,19 @@ form.addEventListener('submit', async (event) => {
         shellReport(location);
         status.textContent = 'Completando el informe con clima, aire y servicios cercanos…';
 
-        const [climate, air, elevationValue, country_, buckets] = await Promise.all([
+        const [climate, air, elevationValue, country_, buckets, government, coast] = await Promise.all([
             weather(location.lat, location.lon),
             airQuality(location.lat, location.lon),
             elevation(location.lat, location.lon),
             countryInfo(location.address?.country),
             nearbyAll(location.lat, location.lon),
+            governmentInfo(location.address?.country_code),
+            coastDistance(location.lat, location.lon),
         ]);
 
         fillDataGrid({ location, climate, air, elevationValue, country: country_ });
         fillPlaces(buckets);
+        fillContext({ government, coast, place: place || location.display_name.split(',')[0] });
         saveToHistory({ query: [place, region, country].filter(Boolean).join(', '), country, region, place });
         status.textContent = 'Informe listo. Puedes imprimirlo o guardarlo como PDF.';
     } catch (error) { status.textContent = error.message; }
