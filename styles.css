@@ -11,6 +11,20 @@
     font-family: Georgia, 'Times New Roman', serif;
     color: var(--ink);
     background: var(--paper);
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    --ink: #eef3ef;
+    --muted: #93a29c;
+    --paper: #0f1715;
+    --card: #17211e;
+    --line: #263531;
+    --green: #5fb59f;
+    --green-dark: #0b201c;
+    --coral: #e56d56;
+    --yellow: #f1c968;
+    color-scheme: dark;
 }
 
 * {
@@ -20,6 +34,11 @@
 body {
     margin: 0;
     background: radial-gradient(circle at 85% 5%, #edf1dc 0, transparent 30%), var(--paper);
+    transition: background-color .2s ease, color .2s ease;
+}
+
+:root[data-theme="dark"] body {
+    background: radial-gradient(circle at 85% 5%, #14231f 0, transparent 35%), var(--paper);
 }
 
 button,
@@ -115,12 +134,83 @@ h3 {
     color: var(--yellow);
 }
 
+.privacy-toggle {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+}
+
+.privacy-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+}
+
+.switch {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .22);
+    transition: background .15s ease;
+    flex-shrink: 0;
+}
+
+.switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: white;
+    transition: transform .15s ease;
+}
+
+.privacy-toggle input:checked+.switch {
+    background: var(--coral);
+}
+
+.privacy-toggle input:checked+.switch::after {
+    transform: translateX(14px);
+}
+
+.privacy-toggle input:focus-visible+.switch {
+    outline: 2px solid var(--yellow);
+    outline-offset: 2px;
+}
+
 .privacy-note {
     font: 11px Arial, sans-serif;
     border: 1px solid rgba(255, 255, 255, .24);
     padding: 7px 9px;
     white-space: nowrap;
     color: #d8e7dd;
+}
+
+.history-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.chip {
+    border: 1px solid rgba(255, 255, 255, .3);
+    background: rgba(255, 255, 255, .07);
+    color: #d8e7dd;
+    border-radius: 20px;
+    padding: 7px 13px;
+    font: 12px Arial, sans-serif;
+    cursor: pointer;
+}
+
+.chip:hover {
+    border-color: var(--yellow);
+    color: white;
 }
 
 form {
@@ -293,6 +383,70 @@ input:focus {
     font: 12px Arial, sans-serif;
     margin-top: 8px;
     line-height: 1.4;
+}
+
+.data-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    color: var(--coral);
+    margin-bottom: 6px;
+}
+
+.data-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.place-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    color: var(--green);
+    margin-bottom: 8px;
+}
+
+.place-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.place-card.empty {
+    color: var(--muted);
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -120px 0;
+    }
+
+    100% {
+        background-position: 120px 0;
+    }
+}
+
+.skeleton-line {
+    height: 12px;
+    border-radius: 2px;
+    margin-top: 8px;
+    background: linear-gradient(90deg, var(--line) 25%, var(--paper) 50%, var(--line) 75%);
+    background-size: 240px 100%;
+    animation: shimmer 1.2s infinite linear;
+}
+
+.skeleton-line:first-child {
+    margin-top: 0;
+    width: 50%;
+}
+
+.skeleton-line.short {
+    width: 40%;
+}
+
+.data-card.skeleton .skeleton-line:last-child,
+.place-card.skeleton .skeleton-line:last-child {
+    height: 20px;
+    width: 70%;
 }
 
 .report-section {

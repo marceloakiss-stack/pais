@@ -9,6 +9,11 @@
     <link rel="manifest" href="manifest.json">
     <title>Atlas Local</title>
     <link rel="stylesheet" href="styles.css">
+    <script>
+        try {
+            if (localStorage.getItem('atlas-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+        } catch { }
+    </script>
 </head>
 
 <body>
@@ -19,6 +24,7 @@
                 <p class="eyebrow">Investigación local</p>
                 <h1>Atlas Local</h1>
             </div>
+            <button class="icon-button" id="theme-button" title="Cambiar tema" aria-label="Cambiar tema claro u oscuro">◐</button>
             <button class="icon-button" id="clear-button" title="Borrar investigación"
                 aria-label="Borrar investigación">×</button>
         </header>
@@ -29,7 +35,11 @@
                     <p class="eyebrow">Nueva ficha</p>
                     <h2 id="search-title">Conoce una localidad</h2>
                 </div>
-                <span class="privacy-note">Sin almacenamiento</span>
+                <label class="privacy-toggle" for="history-toggle">
+                    <input type="checkbox" id="history-toggle">
+                    <span class="switch" aria-hidden="true"></span>
+                    <span class="privacy-note" id="privacy-note">Sin almacenamiento</span>
+                </label>
             </div>
             <form id="location-form">
                 <label>País<input id="country" name="country" placeholder="Italia" autocomplete="country-name"
@@ -42,6 +52,7 @@
                         aria-hidden="true">→</span></button>
             </form>
             <p class="form-status" id="form-status" role="status"></p>
+            <div class="history-chips hidden" id="history-chips" aria-label="Búsquedas recientes"></div>
         </section>
 
         <section class="empty-state" id="empty-state">
